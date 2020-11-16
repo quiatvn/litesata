@@ -238,14 +238,39 @@ class A7LiteSATAPHY(Module):
         }
         self.submodules.qpll = GTPQuadPLL(self.gtrefclk0, 150e6, linerate_config[gen])
         self.comb += self.qplllock.eq(self.qpll.lock)
+        self.comb += self.qpll.reset.eq(tx_init.pllreset)
 
         # OOB clock (75MHz) ------------------------------------------------------------------------
-        oobclk = Signal()
+
+        rxelecidle = Signal()
+        rxcdrlock = Signal()
+        self.rxelecidle = Signal()
+        self.rxcdrlock = Signal()
+
+        self.specials += [
+            MultiReg(rxelecidle, self.rxelecidle, "sys"),
+            MultiReg(rxcdrlock, self.rxcdrlock, "sys"),
+        ]
+
+        #self.comb += rx_init.rxelecidle.eq(rxelecidle) #?????
+        #self.comb += rx_init.rxcdrlock.eq(rxcdrlock) #?????
+
+        oobclk_int = Signal()
         self.specials += Instance("FDPE",
             p_INIT = 1,
             i_CE   = 1,
             i_PRE  = 0,
             i_C    = self.gtrefclk0,
+            i_D    = ~oobclk_int,
+            o_Q    = oobclk_int
+        )
+
+        oobclk = Signal()
+        self.specials += Instance("FDPE",
+            p_INIT = 1,
+            i_CE   = 1,
+            i_PRE  = 0,
+            i_C    = oobclk_int,
             i_D    = ~oobclk,
             o_Q    = oobclk
         )
@@ -325,7 +350,7 @@ class A7LiteSATAPHY(Module):
             p_ES_CONTROL                 = 0b000000,
             p_ES_ERRDET_EN               = "FALSE",
             p_ES_EYE_SCAN_EN             = "TRUE",
-            p_ES_HORZ_OFFSET             = 0x000,
+            p_ES_HORZ_OFFSET             = 0x010,
             p_ES_PMA_CFG                 = 0b0000000000,
             p_ES_PRESCALE                = 0b00000,
             p_ES_QUALIFIER               = 0x00000000000000000000,
@@ -418,8 +443,8 @@ class A7LiteSATAPHY(Module):
             p_SAS_MAX_COM                = 64,
             p_SAS_MIN_COM                = 36,
             p_SATA_BURST_SEQ_LEN         = 0b0101,
-            p_SATA_BURST_VAL             = 0b111,
-            p_SATA_EIDLE_VAL             = 0b111,
+            p_SATA_BURST_VAL             = 0b100,
+            p_SATA_EIDLE_VAL             = 0b100,
             p_SATA_MAX_BURST             = 8,
             p_SATA_MAX_INIT              = 21,
             p_SATA_MAX_WAKE              = 7,
@@ -551,7 +576,7 @@ class A7LiteSATAPHY(Module):
             p_PMA_LOOPBACK_CFG           = 0b0,
 
             # RX OOB Signalling Attributes
-            p_RXOOB_CLK_CFG              = "FABRIC",
+            p_RXOOB_CLK_CFG              = "FABRIC" if gen == "gen1" else "PMA",
 
             # TX OOB Signalling Attributes
             p_TXOOB_CFG                  = 0b0,
@@ -573,13 +598,13 @@ class A7LiteSATAPHY(Module):
             i_TSTIN                = 0b11111111111111111111,
 
             # Channel - DRP Ports
-            i_DRPADDR              = 0,
-            i_DRPCLK               = 0,
-            i_DRPDI                = 0,
-            o_DRPDO                = Open(),
-            i_DRPEN                = 0,
-            o_DRPRDY               = Open(),
-            i_DRPWE                = 0,
+            i_DRPADDR              = rx_init.drp.addr,
+            i_DRPCLK               = rx_init.drp.clk,
+            i_DRPDI                = rx_init.drp.di,
+            o_DRPDO                = rx_init.drp.do,
+            i_DRPEN                = rx_init.drp.en,
+            o_DRPRDY               = rx_init.drp.rdy,
+            i_DRPWE                = rx_init.drp.we,
 
             # Clocking Ports
             i_RXSYSCLKSEL          = 0b00,
@@ -595,7 +620,7 @@ class A7LiteSATAPHY(Module):
             i_PLL1REFCLK           = 0,
 
             # Loopback Ports
-            i_LOOPBACK             = 0,
+            i_LOOPBACK             = 0b000,
 
             # PCI Express Ports
             o_PHYSTATUS            = Open(),
@@ -633,7 +658,7 @@ class A7LiteSATAPHY(Module):
             # Receive Ports - CDR Ports
             i_RXCDRFREQRESET       = 0,
             i_RXCDRHOLD            = self.rx_cdrhold,
-            o_RXCDRLOCK            = Open(),
+            o_RXCDRLOCK            = rxcdrlock, #Open(),   ?????
             i_RXCDROVRDEN          = 0,
             i_RXCDRRESET           = 0,
             i_RXCDRRESETRSV        = 0,
@@ -643,7 +668,6 @@ class A7LiteSATAPHY(Module):
             i_RXOSINTHOLD          = 0,
             i_RXOSINTOVRDEN        = 0,
             i_RXOSINTPD            = 0,
-            o_RXOSINTSTARTED       = Open(),
             i_RXOSINTSTROBE        = 0,
             o_RXOSINTSTROBESTARTED = Open(),
             i_RXOSINTTESTOVRDEN    = 0,
@@ -780,7 +804,7 @@ class A7LiteSATAPHY(Module):
             o_RXCOMINITDET         = rxcominitdet,
 
             # Receive Ports - RX OOB signalling Ports
-            o_RXELECIDLE           = Open(),
+            o_RXELECIDLE           = rxelecidle, #Open(), ?????
             i_RXELECIDLEMODE       = 0b00,
 
             # Receive Ports - RX Polarity Control Ports
